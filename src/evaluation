@@ -1,0 +1,56 @@
+import numpy as np
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+from sklearn.metrics import accuracy_score
+from scipy.optimize import linear_sum_assignment
+
+def compute_silhouette(data, labels):
+  if len(np.unique(labels)) > 1:
+    return silhouette_score(data, labels)
+  return -1
+
+def compute_calinski_harabasz(data, labels):
+  if len(np.unique(labels)) > 1:
+    return calinski_harabasz_score(data, labels)
+  return 0
+
+def compute_davies_bouldin(data, labels):
+  if len(np.unique(labels)) > 1:
+    return davies_bouldin_score(data, labels)
+  return float('inf')
+
+def compute_adjusted_rand(labels_true, labels_pred):
+  return adjusted_rand_score(labels_true, labels_pred)
+
+def compute_nmi(labels_true, labels_pred):
+  return normalized_mutual_info_score(labels_true, labels_pred)
+
+def compute_purity(labels_true, labels_pred):
+  n = len(labels_true)
+  cluster_labels = np.unique(labels_pred)
+  true_labels = np.unique(labels_true)
+  
+  purity_sum = 0
+  for cluster in cluster_labels:
+    cluster_indices = np.where(labels_pred == cluster)[0]
+    if len(cluster_indices) == 0:
+      continue
+      
+    true_labels_in_cluster = labels_true[cluster_indices]
+    most_common = np.bincount(true_labels_in_cluster).max()
+    purity_sum += most_common
+  
+  return purity_sum / n
+
+def compute_all_metrics(data, labels_pred, labels_true=None):
+  metrics = {}
+  metrics['silhouette'] = compute_silhouette(data, labels_pred)
+  metrics['calinski_harabasz'] = compute_calinski_harabasz(data, labels_pred)
+  metrics['davies_bouldin'] = compute_davies_bouldin(data, labels_pred)
+  
+  if labels_true is not None:
+    metrics['adjusted_rand'] = compute_adjusted_rand(labels_true, labels_pred)
+    metrics['nmi'] = compute_nmi(labels_true, labels_pred)
+    metrics['purity'] = compute_purity(labels_true, labels_pred)
+  
+  return metrics
