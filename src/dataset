@@ -1,0 +1,91 @@
+import pandas as pd
+import numpy as np
+import os
+import librosa
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
+
+class MusicDataset:
+  def __init__(self, audio_path='data/audio', lyrics_path='data/gtzan_lyrics.csv'):
+    self.audio_path = audio_path
+    self.lyrics_path = lyrics_path
+    self.genres = ['blues', 'classical', 'country', 'disco', 'hiphop',
+                   'jazz', 'metal', 'pop', 'reggae', 'rock']
+    
+    self.lyrics_df = pd.read_csv(lyrics_path)
+    print(f"Loaded lyrics for {len(self.lyrics_df)} songs")
+  
+  def extract_audio_features(self, file_path):
+    try:
+      audio, sr = librosa.load(file_path, duration=30)
+      mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=20)
+      mfcc_mean = np.mean(mfcc, axis=1)
+      chroma = librosa.feature.chroma_stft(y=audio, sr=sr)
+      chroma_mean = np.mean(chroma, axis=1)
+      features = np.concatenate([mfcc_mean, chroma_mean])
+      return features
+    except Exception as e:
+      print(f"Error loading {file_path}: {e}")
+      return None
+  
+  def get_lyrics_for_song(self, genre, song_file):
+    matching = self.lyrics_df[
+      (self.lyrics_df['genre'] == genre) & 
+      (self.lyrics_df['song_file'] == song_file)
+    ]
+    
+    if len(matching) > 0:
+      return matching.iloc[0]['lyrics']
+    else:
+      return f"Lyrics for {genre} song {song_file}"
+  
+  def create_dataset(self, max_songs=100):
+    all_audio_features = []
+    all_lyrics = []
+    all_labels = []
+    all_filenames = []
+    
+    for genre_idx, genre in enumerate(self.genres):
+      genre_dir = os.path.join(self.audio_path, 'genres', genre)
+      
+      if not os.path.exists(genre_dir):
+        print(f"Warning: {genre_dir} not found")
+        continue
+      
+      audio_files = [f for f in os.listdir(genre_dir) if f.endswith('.wav')]
+      audio_files = sorted(audio_files)[:max_songs]
+      
+      for audio_file in audio_files:
+        file_path = os.path.join(genre_dir, audio_file)
+        audio_features = self.extract_audio_features(file_path)
+        if audio_features is None:
+          continue
+        
+        lyrics = self.get_lyrics_for_song(genre, audio_file)
+        
+        all_audio_features.append(audio_features)
+        all_lyrics.append(lyrics)
+        all_labels.append(genre_idx)
+        all_filenames.append(audio_file)
+    
+    return (np.array(all_audio_features), 
+            all_lyrics, 
+            np.array(all_labels), 
+            all_filenames)
+  
+  def prepare_hybrid_features(self, audio_features, lyrics_texts):
+    vectorizer = TfidfVectorizer(max_features=50, stop_words='english')
+    lyrics_features = vectorizer.fit_transform(lyrics_texts).toarray()
+    
+    scaler = StandardScaler()
+    audio_features_scaled = scaler.fit_transform(audio_features)
+    
+    hybrid_features = np.hstack([audio_features_scaled, lyrics_features])
+    
+    return hybrid_features
+  
+  def create_language_labels(self, n_samples):
+    labels = np.zeros(n_samples)
+    labels[:n_samples//2] = 1
+    np.random.shuffle(labels)
+    return labels.astype(int)
