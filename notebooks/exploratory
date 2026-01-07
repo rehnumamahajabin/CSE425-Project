@@ -1,0 +1,81 @@
+# exploratory.py
+import sys
+sys.path.append('../src')
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from dataset import AudioDataset
+from vae import VAE, train_vae, get_latent_features
+from clustering import *
+from evaluation import compute_all_metrics
+
+# load dataset
+data_path = '../data/audio'
+dataset = AudioDataset(data_path)
+features, labels = dataset.create_dataset()
+
+print(f"Dataset loaded: {features.shape[0]} samples, {features.shape[1]} features")
+print(f"Labels: {len(np.unique(labels))} genres")
+
+# basic vae
+print("\nTraining basic VAE...")
+input_dim = features.shape[1]
+hidden_dim = 128
+latent_dim = 20
+
+vae_model = VAE(input_dim, hidden_dim, latent_dim)
+vae_model = train_vae(vae_model, features, epochs=100)
+
+# get latent features
+latent_features = get_latent_features(vae_model, features)
+
+# clustering with kmeans
+print("\nApplying KMeans clustering...")
+kmeans_labels = apply_kmeans(latent_features, n_clusters=10)
+
+# pca baseline
+print("\nApplying PCA + KMeans baseline...")
+pca_labels = apply_pca_kmeans(features, n_clusters=10)
+
+# evaluation
+print("\nEvaluating clusters...")
+vae_metrics = compute_all_metrics(latent_features, kmeans_labels, labels)
+pca_metrics = compute_all_metrics(features, pca_labels, labels)
+
+print("\nVAE + KMeans Results:")
+for metric, value in vae_metrics.items():
+  print(f"{metric}: {value:.4f}")
+
+print("\nPCA + KMeans Results:")
+for metric, value in pca_metrics.items():
+  print(f"{metric}: {value:.4f}")
+
+# visualization
+def plot_results():
+  fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+  
+  # silhouette comparison
+  axes[0,0].bar(['VAE', 'PCA'], [vae_metrics['silhouette'], pca_metrics['silhouette']])
+  axes[0,0].set_title('Silhouette Score Comparison')
+  
+  # purity comparison
+  axes[0,1].bar(['VAE', 'PCA'], [vae_metrics['purity'], pca_metrics['purity']])
+  axes[0,1].set_title('Purity Comparison')
+  
+  # cluster distribution
+  vae_counts = np.bincount(kmeans_labels)
+  axes[1,0].bar(range(len(vae_counts)), vae_counts)
+  axes[1,0].set_title('VAE Cluster Sizes')
+  
+  pca_counts = np.bincount(pca_labels)
+  axes[1,1].bar(range(len(pca_counts)), pca_counts)
+  axes[1,1].set_title('PCA Cluster Sizes')
+  
+  plt.tight_layout()
+  plt.savefig('../results/latent_visualization/comparison.png')
+  plt.show()
+
+plot_results()
